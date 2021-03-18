@@ -77,7 +77,6 @@ public class MerkleTreeHelper {
         if (leafs.size() % 2 != 0) {
             merkleTree.setOdd(true);
             leafs.add(leafs.get(leafs.size() - 1));
-
         }
         for (int i = 0; i < leafs.size(); i += 2) {
             String hashOfChildren = getSha256(leafs.get(i).getHash(), leafs.get(i + 1).getHash());
@@ -110,7 +109,6 @@ public class MerkleTreeHelper {
             merkleTree.setOdd(false);
         } else {
             merkleTree.setOdd(true);
-
             if ((merkleTree.getLeavesSize() / 2) % 2 != 0) {
                 Node level2Parent = merkleTree.getEnd().getParent().getParent();
                 Node level1 = increaseHeight((short)1,leaf);
@@ -137,7 +135,6 @@ public class MerkleTreeHelper {
     private static Node increaseHeight(short level, Node node) {
         while (node.getLevel() < level) {
             Node parentNode = new Node();
-//            parentNode.setData(node.getData() + node.getData());
             parentNode.setHash(getSha256(node.getData(), node.getData()));
             parentNode.setLevel((short) (node.getLevel() + 1));
             parentNode.setLeft(node);

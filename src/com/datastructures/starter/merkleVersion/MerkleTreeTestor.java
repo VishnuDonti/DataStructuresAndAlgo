@@ -18,14 +18,13 @@ import java.util.stream.IntStream;
 public class MerkleTreeTestor {
 
     public static void main(String[] args) throws Exception {
-        List<com.datastructures.starter.merkle.MerkleTreeTestor.InputNode> lists = IntStream.rangeClosed(1, 10000).mapToObj(x -> applyAsInt(x,false)).collect(Collectors.toList());
+        List<com.datastructures.starter.merkle.MerkleTreeTestor.InputNode> lists = IntStream.rangeClosed(1, 4).mapToObj(x -> applyAsInt(x,false)).collect(Collectors.toList());
         List<Node> leafs = lists.stream().map(MerkleTreeHelper::getNode).collect(Collectors.toList());
         Tree merkleTree = MerkleTreeHelper.createMerkleTree(leafs);
-        List<com.datastructures.starter.merkle.MerkleTreeTestor.InputNode> lists2 = IntStream.rangeClosed(10000,10200).mapToObj(x -> applyAsInt(x,false)).collect(Collectors.toList());
+        List<com.datastructures.starter.merkle.MerkleTreeTestor.InputNode> lists2 = IntStream.rangeClosed(4,5).mapToObj(x -> applyAsInt(x,false)).collect(Collectors.toList());
         List<Node> leafs2 = lists2.stream().map(MerkleTreeHelper::getNode).collect(Collectors.toList());
         leafs2.stream().forEach(x -> MerkleTreeHelper.addLeaf(x,merkleTree));
-        byte[] b = SerializationUtils.serialize(merkleTree);
-        FileUtils.writeByteArrayToFile(new File("MerkleVersionBytes1"), b);
+
     }
 
     private static com.datastructures.starter.merkle.MerkleTreeTestor.InputNode applyAsInt(int x,boolean dup) {

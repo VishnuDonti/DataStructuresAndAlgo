@@ -15,7 +15,6 @@ public class Node implements Serializable {
     String resourceId;
     short level;
 
-
     public String getResourceId() {
         return resourceId;
     }
