@@ -48,11 +48,8 @@ public class MerkleTreeHelper {
 
     public static MerkleTree constructTree(List<Node> leafs) {
         MerkleTree merkleTree = new MerkleTree();
-        if(leafs == null) {
-            return null;
-        }
         //1. add start and end of the leafs using index
-        if (leafs.isEmpty()) {
+        if (leafs != null && leafs.size() > 0) {
             if (merkleTree.getStart() == null) {
                 merkleTree.setStart(leafs.get(0));
             }
@@ -71,7 +68,7 @@ public class MerkleTreeHelper {
 
     private static void constructParents(List<Node> leafs, MerkleTree merkleTree) {
         //1. base condition if input leaves is null or empty
-        if (leafs == null || leafs.isEmpty()) {
+        if (leafs == null || leafs.size() == 0) {
             return;
         }
         //1. ended
@@ -95,6 +92,10 @@ public class MerkleTreeHelper {
         constructParents(intermediateNodes, merkleTree);
     }
 
+    // get hash value of the given index
+    private static String getHashValue(List<Node> leafs, int i) {
+        return leafs.get(i).getHashList().get(0).getHashValue();
+    }
 
     //
     public static void updateTree(Node leaf, MerkleTree merkleTree) {
@@ -301,15 +302,13 @@ public class MerkleTreeHelper {
     }
 
     private static <T> T findLastElementInList(List<T> list) {
-        return list == null || list.isEmpty() ? (T)new Node() : list.get(list.size() - 1);
+        return list == null || list.isEmpty() ? null : list.get(list.size() - 1);
     }
 
     private static Node getNewRoot(Node left, Node right, int rootIndex) {
         // 1. started
         // Create a new instance of node add left and right
         // left and right setParents
-        if(left == null)
-            return null;
         Node newRoot = new Node();
         newRoot.setLeft(left);
         left.setParent(newRoot);
