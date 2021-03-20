@@ -7,12 +7,13 @@ import org.apache.commons.codec.digest.DigestUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class MerkleTreeHelper {
 
-    private MerkleTreeHelper(){
+    private MerkleTreeHelper() {
     }
 
     public static String getSha256(String hash1, String hash2) {
@@ -24,16 +25,18 @@ public class MerkleTreeHelper {
     }
 
     // `this method converts given input data to Node structure
-    public static Node getNode(MerkleTreeTestor.InputNode data) {
+    public static Node getNode(MerleTreeTester.InputNode data) {
         Node node = new Node();
         node.setLeaf(true);
         node.setResourceId(data.getId());
         node.setLevel((short) 0);
-        Deleted deleted = new Deleted();
-        deleted.setDeleted(data.isDeleted());
-        List<Deleted> deletedList = new ArrayList<>(1);
-        deletedList.add(deleted);
-        node.setDeletedList(deletedList);
+        if(data.isDeleted()) {
+            Deleted deleted = new Deleted();
+            deleted.setDeleted(data.isDeleted());
+            List<Deleted> deletedList = new ArrayList<>(1);
+            deletedList.add(deleted);
+            node.setDeletedList(deletedList);
+        }
         try {
             Hash hash = new Hash();
             hash.setHashValue(getSha256(new ObjectMapper().writeValueAsString(node)));
@@ -68,7 +71,7 @@ public class MerkleTreeHelper {
 
     private static void constructParents(List<Node> leafs, MerkleTree merkleTree) {
         //1. base condition if input leaves is null or empty
-        if (leafs == null || leafs.size() == 0) {
+        if (leafs == null || leafs.isEmpty()) {
             return;
         }
         //1. ended
@@ -92,29 +95,41 @@ public class MerkleTreeHelper {
         constructParents(intermediateNodes, merkleTree);
     }
 
-    // get hash value of the given index
-    private static String getHashValue(List<Node> leafs, int i) {
-        return leafs.get(i).getHashList().get(0).getHashValue();
-    }
 
     //
     public static void updateTree(Node leaf, MerkleTree merkleTree) {
         leaf.getHashList().get(0).setRootIndex(merkleTree.getRoot().size());
-        leaf.getDeletedList().get(0).setRootIndex(merkleTree.getRoot().size());
+        if(leaf.getDeletedList() != null) {
+            leaf.getDeletedList().get(0).setRootIndex(merkleTree.getRoot().size());
+        }
         int index = getIndex(leaf, merkleTree);
         if (index == -1) {
-            if (leaf.getDeletedList().get(0).isDeleted()) {
+            if (leaf.getDeletedList() != null && leaf.getDeletedList().get(0).isDeleted()) {
                 return;
             }
             addLeaf(leaf, merkleTree);
         } else {
+            // If already deleted why delete again
+            Deleted deleted = findLastElementInList(merkleTree.getLeaves().get(index).getDeletedList());
+            if (leaf.getDeletedList() != null && leaf.getDeletedList().get(0).isDeleted() && deleted != null && deleted.isDeleted()) {
+                return;
+            }
             updateLeaf(index, leaf, merkleTree);
         }
     }
 
-    public static List<Node> getUpdates(MerkleTree merkleTree, String version) {
+    public static Difference getUpdates(MerkleTree merkleTree, String version) {
         // 1. Check given version is present
-        Optional<Hash> hash = merkleTree.getRoot().stream().flatMap(y -> y.getHashList().stream()).filter(x -> x.getHashValue().equals(version)).findFirst();
+        List<Integer> hashCodes = new ArrayList<>(merkleTree.getRoot().size());
+        Predicate<Node> hashCodeFilter = x -> {
+            if (hashCodes.contains(x.hashCode())) {
+                return false;
+            }
+            hashCodes.add(x.hashCode());
+            return true;
+        };
+        Optional<Hash> hash = merkleTree.getRoot().stream().filter(hashCodeFilter).flatMap(y -> y.getHashList().stream()).filter(x -> x.getHashValue().equals(version)).findFirst();
+        hashCodes.clear();
         // 1. ended
 
         // 2. check if hash is present
@@ -125,14 +140,22 @@ public class MerkleTreeHelper {
         // 2. ended
 
         // 3. If hash is not present return all the leaves that are not deleted.
-        return merkleTree.getLeaves().stream().filter(m -> !findLastElementInList(m.getDeletedList()).isDeleted()).collect(Collectors.toList());
+        Difference difference = new Difference();
+        difference.setUpdated(merkleTree.getLeaves().stream().filter(m -> {
+            Deleted deletedStage = findLastElementInList(m.getDeletedList());
+            if(deletedStage != null) {
+               return  deletedStage.isDeleted();
+            }
+            return true;
+        }).map(Node::getResourceId).collect(Collectors.toList()));
+        return difference;
     }
 
-    private static List<Node> diff(Node givenVersion, Node currentVersion, List<Node> leaves, int givenRootIndex) {
-        List<Node> diffNodes = new ArrayList<>();
+    private static Difference diff(Node givenVersion, Node currentVersion, List<Node> leaves, int givenRootIndex) {
+        List<String> updatedNodeIds = new ArrayList<>();
         if (currentVersion.getLevel() > givenVersion.getLevel()) {
             double nodesAtGivenLevel = Math.pow(2, givenVersion.getLevel());
-            IntStream.range((int) nodesAtGivenLevel, leaves.size()).forEach(index -> diffNodes.add(leaves.get(index)));
+            IntStream.range((int) nodesAtGivenLevel, leaves.size()).forEach(index -> updatedNodeIds.add(leaves.get(index).getResourceId()));
         }
         int diffOfLevels = currentVersion.getLevel() - givenVersion.getLevel();
         Node leftNodeInCurrentNodeVersion = currentVersion;
@@ -140,24 +163,28 @@ public class MerkleTreeHelper {
             leftNodeInCurrentNodeVersion = leftNodeInCurrentNodeVersion.getLeft();
             diffOfLevels--;
         }
-        compareCopiesOfTwoTrees(leftNodeInCurrentNodeVersion, givenVersion, givenRootIndex, diffNodes);
-        return diffNodes;
+        List<String> deletdNodeIds = new ArrayList<>();
+        compareCopiesOfTwoTrees(leftNodeInCurrentNodeVersion, givenVersion, givenRootIndex, updatedNodeIds, deletdNodeIds);
+        Difference difference = new Difference();
+        difference.setUpdated(updatedNodeIds);
+        difference.setDeleted(deletdNodeIds);
+        return difference;
     }
 
-    private static void compareCopiesOfTwoTrees(Node leftNodeInCurrentNodeVersion, Node givenVersion, int givenRootIndex, List<Node> diffNodes) {
-        traverseTillEndCompare(leftNodeInCurrentNodeVersion, givenVersion, givenRootIndex, diffNodes);
+    private static void compareCopiesOfTwoTrees(Node leftNodeInCurrentNodeVersion, Node givenVersion, int givenRootIndex, List<String> updateNodeIds, List<String> deletdNodeIds) {
+        traverseTillEndCompare(leftNodeInCurrentNodeVersion, givenVersion, givenRootIndex, updateNodeIds, deletdNodeIds);
     }
 
-    private static void traverseTillEndCompare(Node leftNodeInCurrentNodeVersion, Node givenVersion, int givenRootIndex, List<Node> diffNodes) {
+    private static void traverseTillEndCompare(Node leftNodeInCurrentNodeVersion, Node givenVersion, int givenRootIndex, List<String> updateNodeIds, List<String> deletdNodeIds) {
         if (leftNodeInCurrentNodeVersion == null || givenVersion == null) {
             return;
         }
         int givenVersionIndex = getGivenVersionIndexOrPrevious(givenVersion, givenRootIndex);
         if (givenVersionIndex == -1) {
             if (leftNodeInCurrentNodeVersion.isLeaf()) {
-                diffNodes.add(leftNodeInCurrentNodeVersion);
+                updateNodeIds.add(leftNodeInCurrentNodeVersion.getResourceId());
             } else {
-                findAllLeavesOfNode(leftNodeInCurrentNodeVersion, diffNodes);
+                findAllLeavesOfNode(leftNodeInCurrentNodeVersion, updateNodeIds);
             }
             return;
         }
@@ -165,21 +192,25 @@ public class MerkleTreeHelper {
             return;
         }
         if (leftNodeInCurrentNodeVersion.isLeaf() || givenVersion.isLeaf()) {
-            diffNodes.add(leftNodeInCurrentNodeVersion);
+            if (leftNodeInCurrentNodeVersion.getDeletedList() == null || !findLastElementInList(leftNodeInCurrentNodeVersion.getDeletedList()).isDeleted()) {
+                updateNodeIds.add(leftNodeInCurrentNodeVersion.getResourceId());
+            } else {
+                deletdNodeIds.add(leftNodeInCurrentNodeVersion.getResourceId());
+            }
         }
-        traverseTillEndCompare(leftNodeInCurrentNodeVersion.getLeft(), givenVersion.getLeft(), givenRootIndex, diffNodes);
-        traverseTillEndCompare(leftNodeInCurrentNodeVersion.getRight(), givenVersion.getRight(), givenRootIndex, diffNodes);
+        traverseTillEndCompare(leftNodeInCurrentNodeVersion.getLeft(), givenVersion.getLeft(), givenRootIndex, updateNodeIds, deletdNodeIds);
+        traverseTillEndCompare(leftNodeInCurrentNodeVersion.getRight(), givenVersion.getRight(), givenRootIndex, updateNodeIds, deletdNodeIds);
     }
 
-    private static void findAllLeavesOfNode(Node leftNodeInCurrentNodeVersion, List<Node> diffNodes) {
+    private static void findAllLeavesOfNode(Node leftNodeInCurrentNodeVersion, List<String> updateNodeIds) {
         if (leftNodeInCurrentNodeVersion == null) {
             return;
         }
-        if (leftNodeInCurrentNodeVersion.isLeaf()) {
-            diffNodes.add(leftNodeInCurrentNodeVersion);
+        if (leftNodeInCurrentNodeVersion.isLeaf() && leftNodeInCurrentNodeVersion.getDeletedList() != null && !findLastElementInList(leftNodeInCurrentNodeVersion.getDeletedList()).isDeleted()) {
+            updateNodeIds.add(leftNodeInCurrentNodeVersion.getResourceId());
         }
-        findAllLeavesOfNode(leftNodeInCurrentNodeVersion.getLeft(), diffNodes);
-        findAllLeavesOfNode(leftNodeInCurrentNodeVersion.getRight(), diffNodes);
+        findAllLeavesOfNode(leftNodeInCurrentNodeVersion.getLeft(), updateNodeIds);
+        findAllLeavesOfNode(leftNodeInCurrentNodeVersion.getRight(), updateNodeIds);
     }
 
     private static int getGivenVersionIndexOrPrevious(Node inputNode, int expectedVersion) {
@@ -200,14 +231,25 @@ public class MerkleTreeHelper {
 
     private static void updateLeaf(int index, Node leaf, MerkleTree merkleTree) {
         String hashValue = findLastElementInList(leaf.getHashList()).getHashValue();
-        boolean isDeleted = findLastElementInList(leaf.getDeletedList()).isDeleted();
+        boolean isDeleted = leaf.getDeletedList() != null ? findLastElementInList(leaf.getDeletedList()).isDeleted() : false;
         Hash hash = new Hash();
         hash.setRootIndex(merkleTree.getRoot().size());
         hash.setHashValue(hashValue);
         List<Node> leavesList = merkleTree.getLeaves();
         Node node = leavesList.get(index);
         node.getHashList().add(hash);
-        if (isDeleted) {
+        if (isDeleted || findLastElementInList(node.getDeletedList()).isDeleted()) {
+            if(node.getDeletedList() != null && findLastElementInList(node.getDeletedList()).isDeleted() && (leaf.getDeletedList() == null || leaf.getDeletedList().isEmpty())) {
+                Deleted deleted = new Deleted();
+                deleted.setRootIndex(merkleTree.getRoot().size());
+                deleted.setDeleted(false);
+                List<Deleted> deletedList = new ArrayList<>(1);
+                deletedList.add(deleted);
+                leaf.setDeletedList(deletedList);
+            }
+            if(node.getDeletedList() == null) {
+                node.setDeletedList(new ArrayList<>(1));
+            }
             node.getDeletedList().add(leaf.getDeletedList().get(0));
         }
         Node parentNode = node.getParent();
@@ -278,7 +320,7 @@ public class MerkleTreeHelper {
         return findLastElementInList(merkleTree.getRoot());
     }
 
-    private static Node findParentWhoseRightChildIsNull( Node end) {
+    private static Node findParentWhoseRightChildIsNull(Node end) {
         while (end != null && end.getRight() != null) {
             end = end.getParent();
         }

@@ -1,24 +1,20 @@
 package com.datastructures.starter.merkleVersion2;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.SerializationUtils;
-
-import java.io.File;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class MerkleTreeTestor {
+public class MerleTreeTester {
 
-    public static void main(String[] args) throws Exception {
-        List<Node> leafs = IntStream.rangeClosed(1, 50).mapToObj(MerkleTreeTestor::applyAsInt).collect(Collectors.toList()).stream().map(MerkleTreeHelper::getNode).collect(Collectors.toList());
+    public static void main(String[] args)  {
+        List<Node> leafs = IntStream.rangeClosed(1, 3).mapToObj(MerleTreeTester::applyAsInt).collect(Collectors.toList()).stream().map(MerkleTreeHelper::getNode).collect(Collectors.toList());
         MerkleTree merkleTree = MerkleTreeHelper.constructTree(leafs);
-        IntStream.rangeClosed(50, 16800).forEach(x -> MerkleTreeHelper.updateTree(MerkleTreeHelper.getNode(applyAsInt(x)),merkleTree));
-        List<Node> diff = MerkleTreeHelper.getUpdates(merkleTree,merkleTree.getRoot().get(0).getHashList().stream().filter(x -> x.getRootIndex() == 0).findFirst().orElse(null).getHashValue());
-        byte[] bytes = SerializationUtils.serialize(merkleTree);
-        FileUtils.writeByteArrayToFile(new File("aaaa2"),bytes);
-        //FileUtils.writeByteArrayToFile(new File("bytes2"),bytes,(bytes.length/2)+1,(bytes.length/2)-1);
+        IntStream.rangeClosed(51, 16800).forEach(x -> MerkleTreeHelper.updateTree(MerkleTreeHelper.getNode(applyAsInt(x)),merkleTree));
+        MerkleTreeHelper.updateTree(MerkleTreeHelper.getNode(applyAsInt(50)),merkleTree);
+        MerkleTreeHelper.updateTree(MerkleTreeHelper.getNode(applyAsInt(3,true)),merkleTree);
+        MerkleTreeHelper.updateTree(MerkleTreeHelper.getNode(applyAsInt(3,false)),merkleTree);
+        Difference difference = MerkleTreeHelper.getUpdates(merkleTree,merkleTree.getRoot().get(16751).getHashList().stream().filter(x -> x.getRootIndex() == 16751).findFirst().orElse(null).getHashValue());
     }
 
     private static InputNode applyAsInt(int x) {
