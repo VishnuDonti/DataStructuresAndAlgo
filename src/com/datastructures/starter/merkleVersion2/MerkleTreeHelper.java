@@ -238,7 +238,7 @@ public class MerkleTreeHelper {
         List<Node> leavesList = merkleTree.getLeaves();
         Node node = leavesList.get(index);
         node.getHashList().add(hash);
-        if (isDeleted || findLastElementInList(node.getDeletedList()).isDeleted()) {
+        if (isDeleted || (node.getDeletedList() != null &&findLastElementInList(node.getDeletedList()).isDeleted())) {
             if(node.getDeletedList() != null && findLastElementInList(node.getDeletedList()).isDeleted() && (leaf.getDeletedList() == null || leaf.getDeletedList().isEmpty())) {
                 Deleted deleted = new Deleted();
                 deleted.setRootIndex(merkleTree.getRoot().size());
